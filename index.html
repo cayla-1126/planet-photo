@@ -80,7 +80,7 @@
             status.innerText = `${uploadedImages.length} / 10`;
             uploadedImages.length >= 5 ? startBtn.classList.add('visible') : startBtn.classList.remove('visible');
         }
-        startBtn.onclick = () => { window.finalPhotos = uploadedImages; localStorage.setItem('userPlanetName', document.getElementById('planet-name').value || "KLA"); };
+        startBtn.onclick = () => { window.finalPhotos = uploadedImages; localStorage.setItem('userPlanetName', document.getElementById('planet-name').value || "KLA"); window.launchPlanet(); };
         document.getElementById('close-btn').onclick = () => { document.getElementById('photo-overlay').style.display = 'none'; };
     </script>
 </body>
