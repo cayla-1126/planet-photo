@@ -1,64 +1,91 @@
-:root {
-    --accent: #ffc0cb;
-    --glass: rgba(255, 255, 255, 0.03);
-}
-
-body { margin: 0; background: #000; font-family: "PingFang SC", "STHeiti", sans-serif; }
+:root { --accent: #ffc0cb; --blue: #a2d2ff; }
+body { margin: 0; overflow: hidden; background-color: #000; font-family: "PingFang SC", sans-serif; color: white; }
 
 #start-screen {
     position: fixed; inset: 0;
-    background: radial-gradient(circle at center, #0a0a20 0%, #000 100%);
+    background: radial-gradient(circle at center, #0d0d2b 0%, #000 100%);
     display: flex; justify-content: center; align-items: center; z-index: 1000;
+    transition: opacity 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#start-screen.fade-out { opacity: 0 !important; pointer-events: none; }
+
+/* 核心容器：宽度控制在 400px 左右，圈圈就会自动折行 */
+.glass-card { 
+    text-align: center; 
+    width: 100%; 
+    max-width: 420px; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
 }
 
-.glass-card {
-    background: var(--glass);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.1);
-    padding: 50px; border-radius: 40px;
-    text-align: center; color: white;
+/* 第一行标题：占满宽度 */
+.glow-text { 
+    font-size: 3.5rem; 
+    letter-spacing: 12px; 
+    font-weight: 200; 
+    margin-bottom: 30px; 
+    text-shadow: 0 0 20px rgba(255,192,203,0.3); 
+    width: 100vw; /* 强制标题占满一行视口宽度 */
+    position: relative;
+    left: 0;
 }
 
-.glow-text {
-    font-size: 2.5rem; letter-spacing: 8px; font-weight: 200;
-    text-shadow: 0 0 20px rgba(255,192,203,0.5);
-    margin-bottom: 10px;
+#planet-name { 
+    background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.2); 
+    color: white; font-size: 1.6rem; text-align: center; outline: none; width: 280px; 
+    letter-spacing: 5px; margin-bottom: 40px; padding-bottom: 8px;
 }
 
-.subtitle { color: rgba(255,255,255,0.5); line-height: 1.8; font-weight: 300; font-size: 0.9rem; }
-
-.input-group {
-    margin: 40px 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+/* 第三行：5+5 两排布局 */
+.preview-container { 
+    display: flex; 
+    flex-wrap: wrap; 
+    justify-content: center; 
+    gap: 12px; 
+    margin-bottom: 30px; 
+    width: 100%; 
 }
 
-#planet-name {
-    background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.3);
-    color: white; font-size: 1.2rem; text-align: center; outline: none; padding: 5px;
+.preview-slot { 
+    width: 65px; 
+    height: 65px; 
+    border: 1px dashed rgba(255,255,255,0.2); 
+    border-radius: 50%; 
+    cursor: pointer; 
+    position: relative; 
+    overflow: hidden; 
+    transition: 0.3s;
+    background: rgba(255,255,255,0.02);
 }
+.preview-slot img { width: 100%; height: 100%; object-fit: cover; }
+.preview-slot.filled { border-style: solid; border-color: var(--accent); box-shadow: 0 0 15px rgba(255,192,203,0.3); }
+
+/* 下方上传区域 */
+#fake-upload-btn { color: rgba(255,255,255,0.5); font-size: 1rem; cursor: pointer; letter-spacing: 2px; transition: 0.3s; padding: 10px; }
+#fake-upload-btn:hover { color: white; text-shadow: 0 0 10px white; }
+#upload-status { margin-top: 5px; font-size: 0.85rem; color: var(--accent); opacity: 0.7; }
 
 .main-btn {
-    margin-top: 30px; padding: 15px 50px; background: transparent;
-    border: 1px solid white; color: white; border-radius: 40px;
-    cursor: pointer; transition: 0.5s; letter-spacing: 2px;
+    position: relative; margin-top: 40px; padding: 20px 80px; background: transparent;
+    border: none; color: white; font-size: 1.5rem; cursor: pointer; letter-spacing: 12px;
+    opacity: 0; transform: translateY(20px); transition: 1s; pointer-events: none;
 }
-
-.main-btn:hover { background: white; color: black; box-shadow: 0 0 30px white; }
-
-/* 说明文字呼吸效果 */
-.ins-node {
-    color: rgba(255,255,255,0.4); font-size: 12px; margin: 10px 0;
-    animation: pulse 3s infinite ease-in-out;
+.main-btn.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.btn-content { position: relative; z-index: 2; text-shadow: 0 0 15px rgba(255,255,255,0.5); }
+.btn-glow {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 120%; height: 120%; background: radial-gradient(ellipse, rgba(255,192,203,0.3) 0%, transparent 70%);
+    z-index: 1; animation: pulseGlow 4s infinite ease-in-out;
 }
+@keyframes pulseGlow { 0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.3; } 50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.6; } }
 
-@keyframes pulse { 
-    0%, 100% { opacity: 0.3; transform: scale(0.95); } 
-    50% { opacity: 0.8; transform: scale(1); } 
-}
-
-/* 相册全屏覆盖 */
-#photo-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.95);
-    display: none; justify-content: center; align-items: center; z-index: 2000;
-    backdrop-filter: blur(10px);
-}
-#full-res-img { max-width: 85%; max-height: 80%; object-fit: contain; }
+/* 场景 UI */
+#instructions { position: fixed; right: 40px; bottom: 40px; display: none; flex-direction: column; gap: 12px; z-index: 50; text-align: right; opacity: 0; transform: translateY(20px); transition: 2s ease 1s; }
+#instructions.fade-in { opacity: 1; transform: translateY(0); }
+.ins-node { font-size: 14px; color: rgba(255,255,255,0.7); letter-spacing: 2px; text-shadow: 0 0 10px white; }
+#photo-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.96); display: none; justify-content: center; align-items: center; z-index: 2000; }
+#close-btn { position: absolute; top: 30px; right: 40px; font-size: 50px; color: white; cursor: pointer; }
+#full-res-img { max-width: 85%; max-height: 85%; object-fit: contain; }
+.scene-title { position: fixed; top: 50px; width: 100%; text-align: center; color: white; font-size: 2rem; letter-spacing: 10px; opacity: 0; pointer-events: none; z-index: 10; text-transform: uppercase; transition: opacity 2.5s ease 1.5s; }
+.scene-title.fade-in { opacity: 0.4; }
