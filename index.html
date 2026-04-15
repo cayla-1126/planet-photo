@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planet Photos</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
+</head>
+<body>
+    <div id="start-screen">
+        <div class="glass-card">
+            <h1 class="glow-text">Planet Photos</h1>
+            
+            <input type="text" id="planet-name" placeholder="为你的星球命名" maxlength="15">
+            
+            <div class="preview-container" id="preview-box">
+                <div class="preview-slot" onclick="removeImg(0)"></div>
+                <div class="preview-slot" onclick="removeImg(1)"></div>
+                <div class="preview-slot" onclick="removeImg(2)"></div>
+                <div class="preview-slot" onclick="removeImg(3)"></div>
+                <div class="preview-slot" onclick="removeImg(4)"></div>
+                <div class="preview-slot" onclick="removeImg(5)"></div>
+                <div class="preview-slot" onclick="removeImg(6)"></div>
+                <div class="preview-slot" onclick="removeImg(7)"></div>
+                <div class="preview-slot" onclick="removeImg(8)"></div>
+                <div class="preview-slot" onclick="removeImg(9)"></div>
+            </div>
+
+            <div class="upload-section">
+                <div id="fake-upload-btn">＋ 汇聚记忆碎片 (5-10张，支持18MB)</div>
+                <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+                <div id="upload-status">0 / 10</div>
+                <button id="start-btn" class="main-btn">
+                    <span class="btn-content">开启星径</span>
+                    <span class="btn-glow"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="instructions">
+        <div class="ins-node">☝️ 拨动星尘</div>
+        <div class="ins-node">🖐️ 触及回忆</div>
+        <div class="ins-node">✊ 远观星系</div>
+    </div>
+
+    <div id="photo-overlay"><div id="close-btn">×</div><img id="full-res-img"></div>
+    <div id="container"></div>
+    <video class="input_video" style="display:none" playsinline></video>
+
+    <script type="module" src="main.js"></script>
+    <script>
+        let uploadedImages = [];
+        const slots = document.querySelectorAll('.preview-slot');
+        const status = document.getElementById('upload-status');
+        const startBtn = document.getElementById('start-btn');
+        const realInput = document.getElementById('file-input');
+        const MAX_SIZE = 18 * 1024 * 1024;
+
+        document.getElementById('fake-upload-btn').onclick = () => realInput.click();
+        realInput.onchange = (e) => {
+            Array.from(e.target.files).forEach(file => {
+                if (uploadedImages.length < 10 && file.size <= MAX_SIZE) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => { if (uploadedImages.length < 10) { uploadedImages.push(ev.target.result); updateUI(); } };
+                    reader.readAsDataURL(file);
+                } else if (file.size > MAX_SIZE) { alert('这张图超过18MB，记忆无法承载'); }
+            });
+            realInput.value = '';
+        };
+        window.removeImg = (i) => { if (uploadedImages[i]) { uploadedImages.splice(i, 1); updateUI(); } };
+        function updateUI() {
+            slots.forEach((s, i) => {
+                s.innerHTML = uploadedImages[i] ? `<img src="${uploadedImages[i]}">` : '';
+                s.className = uploadedImages[i] ? 'preview-slot filled' : 'preview-slot';
+            });
+            status.innerText = `${uploadedImages.length} / 10`;
+            uploadedImages.length >= 5 ? startBtn.classList.add('visible') : startBtn.classList.remove('visible');
+        }
+        startBtn.onclick = () => { window.finalPhotos = uploadedImages; localStorage.setItem('userPlanetName', document.getElementById('planet-name').value || "KLA"); window.launchPlanet(); };
+        document.getElementById('close-btn').onclick = () => { document.getElementById('photo-overlay').style.display = 'none'; };
+    </script>
+</body>
+</html>
