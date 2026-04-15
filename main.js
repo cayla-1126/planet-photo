@@ -23,19 +23,20 @@ let currentEuler = new THREE.Euler(Math.PI / 6, -Math.PI / 8, 0, 'YXZ');
 let lastFingerPos = null, lastHandState = 'neutral';
 let hasTriggeredThisAction = false; 
 
-document.getElementById('start-btn').addEventListener('click', () => {
+// start-btn 的点击逻辑统一在 index.html 的 inline script 里触发 window.launchPlanet
+window.launchPlanet = async () => {
     const screen = document.getElementById('start-screen');
     const ins = document.getElementById('instructions');
     screen.classList.add('fade-out');
-    init3D(); 
+    await init3D();
     setTimeout(() => {
         screen.style.display = 'none';
         if(ins) { ins.style.display = 'flex'; void ins.offsetWidth; ins.classList.add('fade-in'); }
         const title = document.querySelector('.scene-title');
         if(title) title.classList.add('fade-in');
-        setTimeout(startAISystem, 500); 
+        setTimeout(startAISystem, 500);
     }, 1500);
-});
+};
 
 async function processImage(dataUrl) {
     return new Promise((resolve) => {
@@ -130,6 +131,12 @@ function createRing(r_base, p_size, op, count, thickness) {
 }
 
 async function startAISystem() {
+    if (!window.Hands || !window.Camera) {
+        console.warn('MediaPipe 未加载，启用鼠标交互降级模式');
+        enableMouseFallback();
+        return;
+    }
+    try {
     const video = document.querySelector('.input_video');
     const hands = new window.Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
     
@@ -201,8 +208,60 @@ async function startAISystem() {
             lastHandState = pose;
         }
     });
-    const cam = new window.Camera(video, { onFrame: async () => await hands.send({ image: video }), width: 640, height: 480 });
+    // 10秒内模型未加载成功则降级
+    let modelLoaded = false;
+    const loadTimeout = setTimeout(() => {
+        if (!modelLoaded) {
+            console.warn('MediaPipe 模型加载超时，启用鼠标交互降级模式');
+            enableMouseFallback();
+        }
+    }, 10000);
+
+    const cam = new window.Camera(video, {
+        onFrame: async () => {
+            modelLoaded = true;
+            clearTimeout(loadTimeout);
+            await hands.send({ image: video });
+        },
+        width: 640, height: 480
+    });
     cam.start();
+    } catch (err) {
+        console.warn('MediaPipe 启动失败，启用鼠标交互降级模式', err);
+        enableMouseFallback();
+    }
+}
+
+// 鼠标/触摸降级交互：拖拽旋转 + 滚轮缩放
+function enableMouseFallback() {
+    let isDragging = false, lastMouse = { x: 0, y: 0 };
+    const canvas = renderer.domElement;
+
+    canvas.addEventListener('mousedown', (e) => { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; });
+    window.addEventListener('mouseup', () => { isDragging = false; });
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        rotationVelocity.x = (e.clientX - lastMouse.x) / window.innerWidth * 2;
+        rotationVelocity.y = (e.clientY - lastMouse.y) / window.innerHeight * 2;
+        lastMouse = { x: e.clientX, y: e.clientY };
+    });
+    window.addEventListener('wheel', (e) => {
+        const idx = e.deltaY > 0
+            ? Math.min(currentLevelIndex + 1, ZOOM_LEVELS.length - 1)
+            : Math.max(currentLevelIndex - 1, 0);
+        currentLevelIndex = idx;
+        targetZoom = ZOOM_LEVELS[currentLevelIndex];
+    }, { passive: true });
+
+    // 触摸支持
+    let lastTouch = null;
+    canvas.addEventListener('touchstart', (e) => { lastTouch = e.touches[0]; }, { passive: true });
+    canvas.addEventListener('touchmove', (e) => {
+        if (!lastTouch) return;
+        rotationVelocity.x = (e.touches[0].clientX - lastTouch.clientX) / window.innerWidth * 2;
+        rotationVelocity.y = (e.touches[0].clientY - lastTouch.clientY) / window.innerHeight * 2;
+        lastTouch = e.touches[0];
+    }, { passive: true });
 }
 
 function animate() {
@@ -231,6 +290,7 @@ function animate() {
 }
 
 window.addEventListener('click', (e) => {
+    if (!camera) return; // 3D 未初始化时忽略点击
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1), camera);
     const hits = ray.intersectObjects(photoMeshes);
