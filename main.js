@@ -1,59 +1,49 @@
 import * as THREE from 'three';
 
-// ==========================================
-// 【三档位核心参数】
-// ==========================================
+// --- 用户微调参数 ---
 const ZOOM_LEVELS = [25, 15, 5.5]; 
 let currentLevelIndex = 0;         
-
 const BASE_PHOTO_SIZE = 1.3;    
 const MAX_SCALE_FACTOR = 2.0;      
 const ZOOM_SENSITIVITY = 18;       
-// ==========================================
 
-let scene, camera, renderer, planetGroup, planetParticles;
-let photoMeshes = []; 
+let scene, camera, renderer, planetGroup, planetParticles, photoMeshes = [];
 let targetZoom = ZOOM_LEVELS[0], currentZoom = ZOOM_LEVELS[0];
-
 let rotationVelocity = { x: 0, y: 0 }, friction = 0.94; 
-const targetQuaternion = new THREE.Quaternion();
-const currentQuaternion = new THREE.Quaternion();
+const targetQuaternion = new THREE.Quaternion(), currentQuaternion = new THREE.Quaternion();
 let currentEuler = new THREE.Euler(Math.PI / 6, -Math.PI / 8, 0, 'YXZ'); 
+let lastFingerPos = null, lastHandState = 'neutral', hasTriggeredThisAction = false;
 
-let lastFingerPos = null, lastHandState = 'neutral';
-let hasTriggeredThisAction = false; 
-
-// start-btn 的点击逻辑统一在 index.html 的 inline script 里触发 window.launchPlanet
-window.launchPlanet = () => {
+document.getElementById('start-btn').addEventListener('click', () => {
     const screen = document.getElementById('start-screen');
     const ins = document.getElementById('instructions');
     screen.classList.add('fade-out');
-
-    // init3D 和 startAISystem 并行启动，互不阻塞
-    init3D().then(() => {
-        const title = document.querySelector('.scene-title');
-        if(title) title.classList.add('fade-in');
-    });
-
+    init3D(); 
     setTimeout(() => {
         screen.style.display = 'none';
         if(ins) { ins.style.display = 'flex'; void ins.offsetWidth; ins.classList.add('fade-in'); }
-        startAISystem();
-    }, 800);
-};
+        const title = document.querySelector('.scene-title');
+        if(title) title.classList.add('fade-in');
+        setTimeout(startAISystem, 500); 
+    }, 1500);
+});
 
+// 处理大图，确保 18MB 也能在手机跑动
 async function processImage(dataUrl) {
     return new Promise((resolve) => {
         const img = new Image();
         img.src = dataUrl;
         img.onload = () => {
             const canvas = document.createElement('canvas');
-            const scale = Math.min(1, 512 / Math.max(img.width, img.height));
+            const scale = Math.min(1, 1024 / img.width);
             canvas.width = img.width * scale; canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             const tex = new THREE.CanvasTexture(canvas);
-            tex.needsUpdate = true; resolve(tex);
+            tex.needsUpdate = true;
+            // 存储一份处理后的 URL 供手机端大图显示
+            tex.userData = { processedUrl: canvas.toDataURL('image/jpeg', 0.8) };
+            resolve(tex);
         };
     });
 }
@@ -70,14 +60,11 @@ async function init3D() {
     scene.add(planetGroup);
 
     const textureLoader = new THREE.TextureLoader();
-    // 用内联 base64 小圆点代替远程 CDN 纹理，避免网络请求
     const sprite = textureLoader.load('https://threejs.org/examples/textures/sprites/disc.png');
     const circleMask = textureLoader.load('https://threejs.org/examples/textures/sprites/ball.png');
 
-    // 粒子数从 30000 降到 8000，视觉效果相近但初始化快 4 倍
-    const count = 8000;
     const geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(count * 3), cols = new Float32Array(count * 3);
+    const count = 30000, pos = new Float32Array(count * 3), cols = new Float32Array(count * 3);
     const colorPink = new THREE.Color(0xffc0cb), colorBlue = new THREE.Color(0xa2d2ff); 
     for (let i = 0; i < count; i++) {
         const phi = Math.acos(-1 + (2 * i) / count), theta = Math.sqrt(count * Math.PI) * phi, r = 4;
@@ -88,11 +75,25 @@ async function init3D() {
     }
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-    planetParticles = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.04, vertexColors: true, map: sprite, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+    planetParticles = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.025, vertexColors: true, map: sprite, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
     planetGroup.add(planetParticles);
 
-    planetGroup.add(createRing(5.4, 0.02, 0.2, 5000, 0.1));
-    planetGroup.add(createRing(6.2, 0.015, 0.1, 3000, 0.15));
+    const photos = window.finalPhotos || [];
+    for (let i = 0; i < photos.length; i++) {
+        const tex = await processImage(photos[i]);
+        const aspect = tex.image.width / tex.image.height;
+        let w = BASE_PHOTO_SIZE, h = BASE_PHOTO_SIZE;
+        aspect > 1 ? (h = BASE_PHOTO_SIZE / aspect) : (w = BASE_PHOTO_SIZE * aspect);
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, alphaMap: circleMask, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+        const phi = Math.acos(-1 + (2 * i) / photos.length), theta = Math.sqrt(photos.length * Math.PI) * phi, r = 4.02;
+        mesh.position.set(r * Math.cos(theta) * Math.sin(phi), r * Math.sin(theta) * Math.sin(phi), r * Math.cos(phi));
+        mesh.lookAt(0, 0, 0);
+        mesh.userData = { processedUrl: tex.userData.processedUrl, randomScale: 0.8 + Math.random() * 0.4 };
+        photoMeshes.push(mesh); planetGroup.add(mesh);
+    }
+
+    planetGroup.add(createRing(5.4, 0.02, 0.2, 8000, 0.1));
+    planetGroup.add(createRing(6.2, 0.015, 0.1, 5000, 0.15));
     
     const starGeo = new THREE.BufferGeometry(), starPos = new Float32Array(1500 * 3);
     for (let i = 0; i < 1500; i++) {
@@ -102,180 +103,73 @@ async function init3D() {
     starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
     scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.4 })));
 
-    const name = localStorage.getItem('userPlanetName') || "KLA";
-    const title = document.createElement('div');
-    title.className = 'scene-title';
-    title.innerText = name + " PLANET";
-    document.body.appendChild(title);
-
     targetQuaternion.setFromEuler(currentEuler);
     currentQuaternion.copy(targetQuaternion);
 
-    // 先启动渲染循环，让球体立刻出现，照片在后台异步加载
-    animate();
+    // 适配手机端的点击逻辑
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('touchend', handleInteraction);
 
-    // 异步加载照片，加载完一张显示一张
-    const photos = window.finalPhotos || [];
-    for (let i = 0; i < photos.length; i++) {
-        const tex = await processImage(photos[i]);
-        const aspect = tex.image.width / tex.image.height;
-        let w = BASE_PHOTO_SIZE, h = BASE_PHOTO_SIZE;
-        aspect > 1 ? (h = BASE_PHOTO_SIZE / aspect) : (w = BASE_PHOTO_SIZE * aspect);
-        const mesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(w, h),
-            new THREE.MeshBasicMaterial({ map: tex, alphaMap: circleMask, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
-        );
-        const phi = Math.acos(-1 + (2 * i) / photos.length), theta = Math.sqrt(photos.length * Math.PI) * phi, r = 4.02;
-        mesh.position.set(r * Math.cos(theta) * Math.sin(phi), r * Math.sin(theta) * Math.sin(phi), r * Math.cos(phi));
-        mesh.lookAt(0, 0, 0);
-        mesh.userData = { originalMap: tex, dataUrl: photos[i], randomScale: 0.8 + Math.random() * 0.4 };
-        photoMeshes.push(mesh);
-        planetGroup.add(mesh);
+    animate();
+}
+
+function handleInteraction(e) {
+    // 阻止 touch 和 click 同时触发两次
+    const clientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
+    const clientY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY);
+    
+    if (!clientX || !clientY) return;
+
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((clientX/window.innerWidth)*2-1, -(clientY/window.innerHeight)*2+1), camera);
+    const hits = ray.intersectObjects(photoMeshes);
+    if (hits[0] && hits[0].object.material.opacity > 0.4) {
+        // 使用瘦身后的ProcessedUrl，手机端秒开
+        document.getElementById('full-res-img').src = hits[0].object.userData.processedUrl;
+        document.getElementById('photo-overlay').style.display = 'flex';
     }
 }
 
-function createRing(r_base, p_size, op, count, thickness) {
-    const g = new THREE.BufferGeometry(), p = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-        const a = (i/count)*Math.PI*2, r = r_base + (Math.random()-0.5)*1.0;
-        p[i*3] = Math.cos(a)*r; p[i*3+1] = (Math.random()-0.5)*thickness; p[i*3+2] = Math.sin(a)*r;
+function createRing(r, s, o, c, t) {
+    const g = new THREE.BufferGeometry(), p = new Float32Array(c * 3);
+    for (let i = 0; i < c; i++) {
+        const a = (i/c)*Math.PI*2, dist = r + (Math.random()-0.5)*1.0;
+        p[i*3] = Math.cos(a)*dist; p[i*3+1] = (Math.random()-0.5)*t; p[i*3+2] = Math.sin(a)*dist;
     }
     g.setAttribute('position', new THREE.BufferAttribute(p, 3));
-    return new THREE.Points(g, new THREE.PointsMaterial({ size: p_size, color: 0xffffff, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false }));
+    return new THREE.Points(g, new THREE.PointsMaterial({ size: s, color: 0xffffff, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false }));
 }
 
 async function startAISystem() {
-    if (!window.Hands || !window.Camera) {
-        console.warn('MediaPipe 未加载，启用鼠标交互降级模式');
-        enableMouseFallback();
-        return;
-    }
-    try {
-    const video = document.querySelector('.input_video');
     const hands = new window.Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-    
-    // 强制提高模型复杂度以获得更准确的手指位置
-    hands.setOptions({ 
-        maxNumHands: 1, 
-        modelComplexity: 1, 
-        minDetectionConfidence: 0.8, 
-        minTrackingConfidence: 0.8 
-    });
-    
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
     hands.onResults((res) => {
         if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
             const lm = res.multiHandLandmarks[0];
-            
-            // --- 精准手势逻辑重写 ---
-
-            // 1. 只有当食指伸直，且其它三根手指明显弯曲时，才判定为“旋转模式”
-            const isIndexUp = lm[8].y < lm[6].y;
-            const isMiddleDown = lm[12].y > lm[10].y;
-            const isRingDown = lm[16].y > lm[14].y;
-            const isPinkyDown = lm[20].y > lm[18].y;
-
-            const isPureRotateMode = isIndexUp && isMiddleDown && isRingDown && isPinkyDown;
-
-            // 2. 握拳判定：必须所有手指都缩回，且手掌心被遮挡（y轴判定）
+            const isIndexUp = lm[8].y < lm[6].y && lm[12].y > lm[10].y && lm[16].y > lm[14].y;
             const isFist = lm[8].y > lm[5].y && lm[12].y > lm[9].y && lm[16].y > lm[13].y && lm[20].y > lm[17].y;
-            
-            // 3. 张手判定：所有指尖必须大幅高于关节点
             const isOpen = lm[8].y < lm[5].y && lm[12].y < lm[9].y && lm[16].y < lm[13].y && lm[20].y < lm[17].y;
 
-            // --- 行为分发 ---
-
-            // 旋转：必须满足 PureRotateMode
-            if (isPureRotateMode) {
-                const curPos = { x: lm[8].x, y: lm[8].y };
-                if (lastFingerPos) {
-                    rotationVelocity.x = (curPos.x - lastFingerPos.x) * 4;
-                    rotationVelocity.y = (curPos.y - lastFingerPos.y) * 4;
-                }
-                lastFingerPos = curPos;
-                // 旋转模式下，强制锁定缩放状态，防止误触
-                lastHandState = 'neutral'; 
-                return; 
-            } else {
-                lastFingerPos = null;
-            }
-
-            // 缩放逻辑 (仅在非旋转模式下生效)
-            const pose = isFist ? 'fist' : (isOpen ? 'open' : 'neutral');
-            if (pose === 'neutral') {
+            if (isIndexUp && !isFist && !isOpen) {
+                const cp = { x: lm[8].x, y: lm[8].y };
+                if (lastFingerPos) { rotationVelocity.x = (cp.x - lastFingerPos.x) * 4; rotationVelocity.y = (cp.y - lastFingerPos.y) * 4; }
+                lastFingerPos = cp;
                 hasTriggeredThisAction = false;
-            }
+                return;
+            } else { lastFingerPos = null; }
 
+            const pose = isFist ? 'fist' : (isOpen ? 'open' : 'neutral');
+            if (pose === 'neutral') { hasTriggeredThisAction = false; }
             if (lastHandState === 'fist' && pose === 'open' && !hasTriggeredThisAction) {
-                if (currentLevelIndex < ZOOM_LEVELS.length - 1) {
-                    currentLevelIndex++;
-                    targetZoom = ZOOM_LEVELS[currentLevelIndex];
-                    hasTriggeredThisAction = true;
-                }
+                if (currentLevelIndex < ZOOM_LEVELS.length - 1) { currentLevelIndex++; targetZoom = ZOOM_LEVELS[currentLevelIndex]; hasTriggeredThisAction = true; }
             } else if (lastHandState === 'open' && pose === 'fist' && !hasTriggeredThisAction) {
-                if (currentLevelIndex > 0) {
-                    currentLevelIndex--;
-                    targetZoom = ZOOM_LEVELS[currentLevelIndex];
-                    hasTriggeredThisAction = true;
-                }
+                if (currentLevelIndex > 0) { currentLevelIndex--; targetZoom = ZOOM_LEVELS[currentLevelIndex]; hasTriggeredThisAction = true; }
             }
-
             lastHandState = pose;
         }
     });
-    // 10秒内模型未加载成功则降级
-    let modelLoaded = false;
-    const loadTimeout = setTimeout(() => {
-        if (!modelLoaded) {
-            console.warn('MediaPipe 模型加载超时，启用鼠标交互降级模式');
-            enableMouseFallback();
-        }
-    }, 10000);
-
-    const cam = new window.Camera(video, {
-        onFrame: async () => {
-            modelLoaded = true;
-            clearTimeout(loadTimeout);
-            await hands.send({ image: video });
-        },
-        width: 640, height: 480
-    });
+    const cam = new window.Camera(document.querySelector('.input_video'), { onFrame: async () => await hands.send({ image: document.querySelector('.input_video') }), width: 640, height: 480 });
     cam.start();
-    } catch (err) {
-        console.warn('MediaPipe 启动失败，启用鼠标交互降级模式', err);
-        enableMouseFallback();
-    }
-}
-
-// 鼠标/触摸降级交互：拖拽旋转 + 滚轮缩放
-function enableMouseFallback() {
-    let isDragging = false, lastMouse = { x: 0, y: 0 };
-    const canvas = renderer.domElement;
-
-    canvas.addEventListener('mousedown', (e) => { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; });
-    window.addEventListener('mouseup', () => { isDragging = false; });
-    window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        rotationVelocity.x = (e.clientX - lastMouse.x) / window.innerWidth * 2;
-        rotationVelocity.y = (e.clientY - lastMouse.y) / window.innerHeight * 2;
-        lastMouse = { x: e.clientX, y: e.clientY };
-    });
-    window.addEventListener('wheel', (e) => {
-        const idx = e.deltaY > 0
-            ? Math.min(currentLevelIndex + 1, ZOOM_LEVELS.length - 1)
-            : Math.max(currentLevelIndex - 1, 0);
-        currentLevelIndex = idx;
-        targetZoom = ZOOM_LEVELS[currentLevelIndex];
-    }, { passive: true });
-
-    // 触摸支持
-    let lastTouch = null;
-    canvas.addEventListener('touchstart', (e) => { lastTouch = e.touches[0]; }, { passive: true });
-    canvas.addEventListener('touchmove', (e) => {
-        if (!lastTouch) return;
-        rotationVelocity.x = (e.touches[0].clientX - lastTouch.clientX) / window.innerWidth * 2;
-        rotationVelocity.y = (e.touches[0].clientY - lastTouch.clientY) / window.innerHeight * 2;
-        lastTouch = e.touches[0];
-    }, { passive: true });
 }
 
 function animate() {
@@ -287,29 +181,13 @@ function animate() {
         rotationVelocity.x *= friction; rotationVelocity.y *= friction;
     }
     currentQuaternion.slerp(targetQuaternion, 0.1); planetGroup.quaternion.copy(currentQuaternion);
-    
     currentZoom += (targetZoom - currentZoom) * 0.08; 
     camera.position.z = currentZoom; camera.lookAt(0,0,0);
-
-    const baseOp = THREE.MathUtils.mapLinear(currentZoom, 22, 16, 0, 1);
-    const breathe = Math.sin(Date.now() * 0.002) * 0.1 + 0.9;
-    const dynScale = THREE.MathUtils.mapLinear(currentZoom, 15, 5.5, 1, MAX_SCALE_FACTOR);
-
+    const op = THREE.MathUtils.mapLinear(currentZoom, 22, 16, 0, 1);
+    const dynS = THREE.MathUtils.mapLinear(currentZoom, 15, 5.5, 1, MAX_SCALE_FACTOR);
     photoMeshes.forEach(m => {
-        m.material.opacity = THREE.MathUtils.clamp(baseOp * breathe, 0, 1);
-        const s = dynScale * (m.userData.randomScale || 1);
-        m.scale.set(s, s, s);
+        m.material.opacity = THREE.MathUtils.clamp(op * (Math.sin(Date.now()*0.002)*0.1+0.9), 0, 1);
+        m.scale.set(dynS * m.userData.randomScale, dynS * m.userData.randomScale, 1);
     });
     renderer.render(scene, camera);
 }
-
-window.addEventListener('click', (e) => {
-    if (!camera) return; // 3D 未初始化时忽略点击
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1), camera);
-    const hits = ray.intersectObjects(photoMeshes);
-    if (hits[0] && hits[0].object.material.opacity > 0.4) {
-        document.getElementById('full-res-img').src = hits[0].object.userData.dataUrl;
-        document.getElementById('photo-overlay').style.display = 'flex';
-    }
-});
