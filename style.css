@@ -89,3 +89,17 @@ body { margin: 0; overflow: hidden; background-color: #000; font-family: "PingFa
 #full-res-img { max-width: 85%; max-height: 85%; object-fit: contain; }
 .scene-title { position: fixed; top: 50px; width: 100%; text-align: center; color: white; font-size: 2rem; letter-spacing: 10px; opacity: 0; pointer-events: none; z-index: 10; text-transform: uppercase; transition: opacity 2.5s ease 1.5s; }
 .scene-title.fade-in { opacity: 0.4; }
+/* 手机端大图自适应优化 */
+@media (max-width: 768px) {
+    #full-res-img {
+        max-width: 95%;
+        max-height: auto;
+        width: 95%;
+        border-radius: 10px;
+    }
+    #close-btn {
+        top: 15px;
+        right: 20px;
+        font-size: 40px;
+    }
+}
