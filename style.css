@@ -1,0 +1,64 @@
+:root {
+    --accent: #ffc0cb;
+    --glass: rgba(255, 255, 255, 0.03);
+}
+
+body { margin: 0; background: #000; font-family: "PingFang SC", "STHeiti", sans-serif; }
+
+#start-screen {
+    position: fixed; inset: 0;
+    background: radial-gradient(circle at center, #0a0a20 0%, #000 100%);
+    display: flex; justify-content: center; align-items: center; z-index: 1000;
+}
+
+.glass-card {
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 50px; border-radius: 40px;
+    text-align: center; color: white;
+}
+
+.glow-text {
+    font-size: 2.5rem; letter-spacing: 8px; font-weight: 200;
+    text-shadow: 0 0 20px rgba(255,192,203,0.5);
+    margin-bottom: 10px;
+}
+
+.subtitle { color: rgba(255,255,255,0.5); line-height: 1.8; font-weight: 300; font-size: 0.9rem; }
+
+.input-group {
+    margin: 40px 0; display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+
+#planet-name {
+    background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.3);
+    color: white; font-size: 1.2rem; text-align: center; outline: none; padding: 5px;
+}
+
+.main-btn {
+    margin-top: 30px; padding: 15px 50px; background: transparent;
+    border: 1px solid white; color: white; border-radius: 40px;
+    cursor: pointer; transition: 0.5s; letter-spacing: 2px;
+}
+
+.main-btn:hover { background: white; color: black; box-shadow: 0 0 30px white; }
+
+/* 说明文字呼吸效果 */
+.ins-node {
+    color: rgba(255,255,255,0.4); font-size: 12px; margin: 10px 0;
+    animation: pulse 3s infinite ease-in-out;
+}
+
+@keyframes pulse { 
+    0%, 100% { opacity: 0.3; transform: scale(0.95); } 
+    50% { opacity: 0.8; transform: scale(1); } 
+}
+
+/* 相册全屏覆盖 */
+#photo-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+    display: none; justify-content: center; align-items: center; z-index: 2000;
+    backdrop-filter: blur(10px);
+}
+#full-res-img { max-width: 85%; max-height: 80%; object-fit: contain; }
